@@ -1,0 +1,271 @@
+<html>
+  <head>
+    <title>Vimium Options</title>
+    <script src="lib/keyboardUtils.js"></script>
+    <script src="linkHints.js"></script>
+    <script src="lib/clipboard.js"></script>
+    <script src="vimiumFrontend.js"></script>
+    <style type="text/css" media="screen">
+      body {
+        font-family:"helvetica neue", "helvetica", "arial", "sans";
+        width:640px;
+        margin:10px auto;
+      }
+      a, a:visited { color:blue; }
+      #optionsTableWrapper {
+        width:490px;
+        border:1px solid red;
+      }
+      .example {
+        font-size:80%;
+        color:#555;
+        margin-left:20px;
+      }
+      .caption {
+        margin-right:10px;
+      }
+      td {
+        padding:5px 0;
+      }
+      td#mappingsHelp {
+        padding:20px 0;
+      }
+      textarea#excludedUrls {
+        width:490px;
+        min-height:100px;
+      }
+      textarea#userDefinedLinkHintCss {
+        width:342px;
+        min-height:100px;
+      }
+      textarea#keyMappings {
+        width:342px;
+        min-height:100px;
+      }
+      #status {
+        margin-left:10px;
+        font-size:80%;
+      }
+      /* Make the caption in the settings table as small as possible, to pull the other fields to the right. */
+      td:nth-child(1) {
+        width:1px;
+        white-space:nowrap;
+      }
+      #buttonsPanel {
+        /* This should match the width of #excludedUrls + 5px of padding to move the buttons to the right. */
+        width:495px;
+        text-align:right;
+        margin-top:18px;
+        margin-right:-10px;
+      }
+      #showHelpDialogMessage {
+        width:495px;
+        font-size:15px;
+      }
+      .help {
+        position:absolute;
+        right:-280px;
+        width:280px;
+      }
+      tr.advancedOption {
+        display:none;
+      }
+
+    </style>
+
+  <script type="text/javascript">
+  $ = function(id) { return document.getElementById(id); };
+  currentlyShowingDialog = null;
+
+  var defaultSettings = chrome.extension.getBackgroundPage().defaultSettings;
+
+  var editableFields = ["scrollStepSize", "defaultZoomLevel", "excludedUrls", "linkHintCharacters",
+    "userDefinedLinkHintCss", "keyMappings"];
+
+  var postSaveHooks = {
+    "keyMappings": function (value) {
+      backgroundPage = chrome.extension.getBackgroundPage();
+      backgroundPage.clearKeyMappingsAndSetDefaults();
+      backgroundPage.parseCustomKeyMappings(value);
+      backgroundPage.refreshCompletionKeysAfterMappingSave();
+    }
+  };
+
+  function initializeOptions() {
+    populateOptions();
+    for (var i = 0; i < editableFields.length; i++)
+      $(editableFields[i]).addEventListener("keyup", onOptionKeyup, false);
+    $("advancedOptions").addEventListener("click", openAdvancedOptions, false);
+    $("showCommands").addEventListener("click", function () {
+      showDialog("vimiumCommandListingContainer",
+        chrome.extension.getBackgroundPage().helpDialogHtml(true, true, "Command Listing"));
+    }, false);
+  }
+
+  function onOptionKeyup(event) {
+    if (event.target.getAttribute("savedValue") != event.target.value)
+      enableSaveButton();
+  }
+
+  function enableSaveButton() { $("saveOptions").removeAttribute("disabled"); }
+
+  // Saves options to localStorage.
+  function saveOptions() {
+    // If the value is unchanged from the default, delete the preference from localStorage; this gives us
+    // the freedom to change the defaults in the future.
+    for (var i = 0; i < editableFields.length; i++) {
+      var fieldName = editableFields[i];
+      var fieldValue = $(fieldName).value.trim();
+      var defaultFieldValue = (defaultSettings[fieldName] != null) ?
+        defaultSettings[fieldName].toString() : "";
+      if (fieldValue == defaultFieldValue)
+        delete localStorage[fieldName];
+      else
+        localStorage[fieldName] = fieldValue;
+      $(fieldName).value = fieldValue;
+      $(fieldName).setAttribute("savedValue", fieldValue);
+
+      if (postSaveHooks[fieldName]) { postSaveHooks[fieldName](fieldValue); }
+    }
+    $("saveOptions").disabled = true;
+  }
+
+  // Restores select box state to saved value from localStorage.
+  function populateOptions() {
+    for (var i = 0; i < editableFields.length; i++) {
+      $(editableFields[i]).value = localStorage[editableFields[i]] || defaultSettings[editableFields[i]] || "";
+      $(editableFields[i]).setAttribute("savedValue", $(editableFields[i]).value);
+    }
+  }
+
+  function restoreToDefaults() {
+    for (var i = 0; i < editableFields.length; i++)
+      $(editableFields[i]).value = defaultSettings[editableFields[i]] || "";
+    enableSaveButton();
+  }
+
+  function openAdvancedOptions(event) {
+    var elements = document.getElementsByClassName("advancedOption");
+    for (var i = 0; i < elements.length; i++)
+      elements[i].style.display = (elements[i].style.display == "table-row") ? "none" : "table-row";
+    event.preventDefault();
+  }
+
+  function showDialog(dialogId, dialogHtml) {
+    if (currentlyShowingDialog)
+      return false;
+
+    currentlyShowingDialog = dialogId;
+    var container = document.createElement("div");
+    container.id = currentlyShowingDialog;
+    container.innerHTML = dialogHtml;
+    container.getElementsByClassName("closeButton")[0].addEventListener("click", hideDialog, false);
+    container.getElementsByClassName("optionsPage")[0].style.display = 'none';
+    document.body.appendChild(container);
+    var dialog = document.getElementById("vimiumHelpDialog");
+    dialog.style.top = Math.max((window.innerHeight - dialog.clientHeight) / 2.0, 20) + "px";
+  }
+
+  function hideDialog() {
+    var dialog = document.getElementById(currentlyShowingDialog);
+    if (dialog)
+      dialog.parentNode.removeChild(dialog);
+
+    currentlyShowingDialog = null;
+  }
+
+  </script>
+
+  </head>
+
+  <body onload="initializeOptions()">
+    <h1>Vimium - Options</h1>
+    <table style="position:relative">
+      <tr>
+        <td class="caption">Scroll step size</td>
+        <td>
+          <input id="scrollStepSize" type="text" style="width:50px" />px
+        </td>
+      </tr>
+      <tr>
+        <td><span class="caption">Default zoom level</span></td>
+        <td>
+          <input id="defaultZoomLevel" type="text" value="100" style="width:50px" />%
+        </td>
+      </tr>
+      <tr>
+        <td colspan="3">
+            Excluded URLs<br/>
+            <div class="help">
+              <div class="example">
+                e.g. http*://mail.google.com/*<br/>
+                This will disable Vimium on Gmail.<br/><br/>
+                Enter one URL per line.<br/>
+              </div>
+            </div>
+            <textarea id="excludedUrls"></textarea>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="3">
+          <a href="#" id="advancedOptions">Advanced options &raquo;</a>
+        </td>
+      </tr>
+      <tr class="advancedOption">
+        <td class="caption">Key mappings</td>
+        <td id="mappingsHelp" verticalAlign="top">
+          <div class="help">
+            <div class="example">
+              <!-- TODO(ilya/philc): Expand this and style it better. -->
+              Enter commands to remap your keys. Available commands:<br/>
+              <div style="margin-left:10px;margin-top:5px">
+                map j scrollDown<br/>
+                unmap j<br/>
+                unmapAll<br/>
+                " this is a comment<br/>
+                # this is also a comment<br/>
+              </div>
+              <a href="#" id="showCommands">Show available commands.</a>
+            </div>
+          </div>
+          <textarea id="keyMappings" type="text"></textarea>
+        </td>
+      </tr>
+      <tr class="advancedOption">
+        <td class="caption">Characters used<br/> for link hints</td>
+        <td verticalAlign="top">
+            <div class="help">
+              <div class="example">
+                The characters placed next to each link after typing "F" to enter link hinting mode.
+              </div>
+            </div>
+            <input id="linkHintCharacters" type="text" style="width:150px" />
+        </td>
+      </tr>
+      <tr class="advancedOption">
+        <td class="caption">CSS for link hints</td>
+        <td verticalAlign="top">
+          <div class="help">
+            <div class="example">
+              The CSS used to style the characters next to each link hint.<br/><br/>
+              Note: these styles are used in addition to and take precedence over Vimium's
+              default styles.
+            </div>
+          </div>
+          <textarea id="userDefinedLinkHintCss" type="text"></textarea>
+        </td>
+      </tr>
+    </table>
+
+    <div id="buttonsPanel">
+      <button id="restoreSettings" onclick="restoreToDefaults()">Restore to Defaults</button>
+      <button id="saveOptions" disabled="true" onclick="saveOptions()">Save Options</button>
+    </div>
+
+    <br/>
+
+    <div id="showHelpDialogMessage">
+      To view all available shortcuts, type <span style="font-weight:bold">?</span> to show the Vimium help dialog.
+    </div>
+  </body>
+</html>
